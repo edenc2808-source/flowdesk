@@ -1,9 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, UserPlus } from 'lucide-react'
 
 interface Props { onClose: () => void; onCreated: () => void }
+
+const SOURCE_OPTIONS = [
+  { value: 'manual',   label: 'ידני' },
+  { value: 'website',  label: 'אתר' },
+  { value: 'referral', label: 'הפניה' },
+  { value: 'social',   label: 'אינסטגרם / פייסבוק' },
+  { value: 'google',   label: 'גוגל' },
+  { value: 'email',    label: 'אימייל' },
+  { value: 'other',    label: 'אחר' },
+]
 
 export default function AddLeadModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState({ name: '', phone: '', source: 'manual', tags: '', notes: '' })
@@ -14,8 +24,8 @@ export default function AddLeadModal({ onClose, onCreated }: Props) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name.trim()) { setError('Name is required'); return }
-    if (!form.phone.trim()) { setError('Phone is required'); return }
+    if (!form.name.trim()) { setError('שם הוא שדה חובה'); return }
+    if (!form.phone.trim()) { setError('טלפון הוא שדה חובה'); return }
 
     setLoading(true)
     setError('')
@@ -31,7 +41,7 @@ export default function AddLeadModal({ onClose, onCreated }: Props) {
     const data = await res.json()
 
     if (!res.ok) {
-      setError(data.error || 'Failed to create lead')
+      setError(data.error || 'יצירת איש הקשר נכשלה')
       setLoading(false)
       return
     }
@@ -43,33 +53,36 @@ export default function AddLeadModal({ onClose, onCreated }: Props) {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-semibold text-slate-900">New Lead</h2>
+          <div className="flex items-center gap-2">
+            <UserPlus size={18} className="text-indigo-600" />
+            <h2 className="font-semibold text-slate-900">איש קשר חדש</h2>
+          </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          <Field label="Name *">
+          <Field label="שם *">
             <input value={form.name} onChange={e => u('name', e.target.value)} required
-              placeholder="John Smith" className={INPUT} autoFocus />
+              placeholder="שם מלא" className={INPUT} autoFocus />
           </Field>
-          <Field label="Phone *" hint="Will be normalized to E.164 format">
+          <Field label="טלפון *" hint="יאוחד לפורמט בינלאומי (E.164)">
             <input value={form.phone} onChange={e => u('phone', e.target.value)} required
-              placeholder="+1 555 0100 or 050-1234567" className={INPUT} dir="ltr" />
+              placeholder="050-1234567 או +972-50-1234567" className={INPUT} dir="ltr" />
           </Field>
-          <Field label="Source">
+          <Field label="מקור">
             <select value={form.source} onChange={e => u('source', e.target.value)} className={INPUT}>
-              {['manual','website','referral','social','email','other'].map(s => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+              {SOURCE_OPTIONS.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
           </Field>
-          <Field label="Tags" hint="Comma-separated, e.g. vip, enterprise">
+          <Field label="תגיות" hint="מופרד בפסיקים, לדוג׳: vip, הסרת שיער">
             <input value={form.tags} onChange={e => u('tags', e.target.value)}
-              placeholder="vip, hot-lead, referral" className={INPUT} />
+              placeholder="vip, לקוח חדש, הפניה" className={INPUT} />
           </Field>
-          <Field label="Notes">
+          <Field label="הערות">
             <textarea value={form.notes} onChange={e => u('notes', e.target.value)} rows={2}
-              placeholder="Any additional context…" className={INPUT} />
+              placeholder="הקשר נוסף..." className={INPUT + ' resize-none'} />
           </Field>
 
           {error && (
@@ -81,11 +94,11 @@ export default function AddLeadModal({ onClose, onCreated }: Props) {
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose}
               className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm hover:bg-slate-50">
-              Cancel
+              ביטול
             </button>
             <button type="submit" disabled={loading}
               className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
-              {loading ? 'Creating…' : 'Create & Send Message'}
+              {loading ? 'יוצר...' : 'צור איש קשר'}
             </button>
           </div>
         </form>

@@ -13,12 +13,12 @@ function getClient() {
 }
 
 function getFrom(): string {
-  const num = process.env.TWILIO_WHATSAPP_NUMBER
-  if (!num) throw new Error('[Twilio] TWILIO_WHATSAPP_NUMBER must be set')
-  return `whatsapp:${num}`
+  const num = process.env.TWILIO_WHATSAPP_FROM || process.env.TWILIO_WHATSAPP_NUMBER
+  if (!num) throw new Error('[Twilio] TWILIO_WHATSAPP_FROM must be set')
+  return num.startsWith('whatsapp:') ? num : `whatsapp:${num}`
 }
 
-export async function sendWhatsAppMessage(to: string, body: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendWhatsAppMessage(to: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
   if (!body.trim()) {
     console.warn('[Twilio] Attempted to send empty message to', to)
     return { ok: false, error: 'empty_message' }
@@ -31,7 +31,7 @@ export async function sendWhatsAppMessage(to: string, body: string): Promise<{ o
     try {
       const msg = await getClient().messages.create({ from, to: toFormatted, body })
       console.info(`[Twilio] Sent to ${toFormatted} sid=${msg.sid}`)
-      return { ok: true }
+      return { ok: true, sid: msg.sid }
     } catch (err: unknown) {
       const twilioErr = err as { code?: number; message?: string }
       console.error(`[Twilio] Send attempt ${attempt} failed to ${toFormatted}:`, {

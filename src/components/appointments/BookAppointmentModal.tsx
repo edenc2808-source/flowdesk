@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Calendar } from 'lucide-react'
 
 interface Props {
   leadId: string
@@ -24,11 +24,10 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
   const [error, setError] = useState('')
 
   function validate(): string | null {
-    if (!date) return 'Please select a date'
-    // Build UTC ISO from local date+time string
+    if (!date) return 'נא לבחור תאריך'
     const dt = new Date(`${date}T${time}`)
-    if (isNaN(dt.getTime())) return 'Invalid date or time'
-    if (dt < new Date()) return 'Appointment must be in the future'
+    if (isNaN(dt.getTime())) return 'תאריך או שעה לא תקינים'
+    if (dt < new Date()) return 'הפגישה חייבת להיות בעתיד'
     return null
   }
 
@@ -39,7 +38,6 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
     setLoading(true)
     setError('')
 
-    // Use local datetime — server will store as ISO
     const datetime = new Date(`${date}T${time}`).toISOString()
 
     const res = await fetch('/api/appointments', {
@@ -57,7 +55,7 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
     const data = await res.json()
 
     if (!res.ok) {
-      setError(data.error || 'Failed to book appointment')
+      setError(data.error || 'קביעת הפגישה נכשלה')
       setLoading(false)
       return
     }
@@ -69,9 +67,12 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="font-semibold text-slate-900">Book Appointment</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{leadName}</p>
+          <div className="flex items-center gap-2">
+            <Calendar size={18} className="text-indigo-600" />
+            <div>
+              <h2 className="font-semibold text-slate-900">קבע פגישה</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{leadName}</p>
+            </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X size={18} />
@@ -81,45 +82,45 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Date *</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">תאריך *</label>
               <input
                 type="date"
                 value={date}
                 min={todayISO()}
                 onChange={e => { setDate(e.target.value); setError('') }}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className={INPUT}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Time *</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">שעה *</label>
               <input
                 type="time"
                 value={time}
                 onChange={e => { setTime(e.target.value); setError('') }}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className={INPUT}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Title</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">סוג הטיפול</label>
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Initial consultation"
+              placeholder="לדוגמה: ייעוץ ראשוני, הסרת שיער..."
               maxLength={100}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className={INPUT}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">הערות</label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={2}
               maxLength={500}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+              className={INPUT + ' resize-none'}
             />
           </div>
 
@@ -130,7 +131,7 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
               onChange={e => setSendConfirm(e.target.checked)}
               className="w-4 h-4 rounded accent-indigo-600"
             />
-            <span className="text-sm text-slate-600">Send WhatsApp confirmation</span>
+            <span className="text-sm text-slate-600">שלח אישור ב-WhatsApp</span>
           </label>
         </div>
 
@@ -145,17 +146,19 @@ export default function BookAppointmentModal({ leadId, leadName, onClose, onBook
             onClick={onClose}
             className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm hover:bg-slate-50"
           >
-            Cancel
+            ביטול
           </button>
           <button
             onClick={book}
             disabled={!date || loading}
             className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Booking…' : 'Confirm Booking'}
+            {loading ? 'קובע...' : 'אשר פגישה'}
           </button>
         </div>
       </div>
     </div>
   )
 }
+
+const INPUT = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400'

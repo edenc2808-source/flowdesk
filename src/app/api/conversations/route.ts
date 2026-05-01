@@ -1,28 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-
-  const { data: wu } = await supabase.from('workspace_users').select('workspace_id').eq('id', user.id).single()
-  if (!wu) return NextResponse.json({ error: 'no workspace' }, { status: 403 })
+  const auth = await getAuthContext()
+  if (!auth) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search')
 
-  let q = supabase
+  const db = createServiceClient()
+
+  let q = db
     .from('conversations')
     .select('*, lead:leads(id,name,phone,status,tags)')
-    .eq('workspace_id', wu.workspace_id)
+    .eq('workspace_id', auth.workspaceId)
     .order('last_message_at', { ascending: false })
+    .limit(100)
 
-  if (search) {
-    // Filter after fetch — Supabase doesn't support joined ilike easily
+  // Agents only see conversations assigned to them
+  if (auth.role === 'agent') {
+    q = q.eq('assigned_agent_id', auth.userId)
   }
 
-  const { data, error } = await q.limit(100)
+  const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const filtered = search
