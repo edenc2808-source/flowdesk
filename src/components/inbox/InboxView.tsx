@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ConversationList, { type InboxFilter } from './ConversationList'
 import ChatPanel from './ChatPanel'
 import ContactPanel from './ContactPanel'
@@ -10,6 +11,9 @@ import { DEMO_CONVERSATIONS } from '@/lib/demo-data'
 const POLL_INTERVAL = 8000
 
 export default function InboxView() {
+  const searchParams = useSearchParams()
+  const deepLinkLeadId = searchParams.get('lead_id')
+
   const [conversations, setConversations] = useState<Conversation[]>(DEMO_CONVERSATIONS)
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -18,6 +22,7 @@ export default function InboxView() {
   const [loading, setLoading] = useState(false)
   const searchRef = useRef(search)
   searchRef.current = search
+  const didAutoSelect = useRef(false)
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -43,6 +48,17 @@ export default function InboxView() {
     const t = setInterval(fetchConversations, POLL_INTERVAL)
     return () => clearInterval(t)
   }, [fetchConversations])
+
+  // Auto-select conversation when navigating from contacts page
+  useEffect(() => {
+    if (!deepLinkLeadId || didAutoSelect.current) return
+    const conv = conversations.find(c => c.lead_id === deepLinkLeadId)
+    if (conv) {
+      didAutoSelect.current = true
+      selectConversation(conv)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, deepLinkLeadId])
 
   function selectConversation(conv: Conversation) {
     setSelectedConvId(conv.id)

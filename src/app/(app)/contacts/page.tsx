@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Search, MessageSquare, Calendar } from 'lucide-react'
 import { format } from 'date-fns'
 import clsx from 'clsx'
 import type { Lead, LeadStatus } from '@/types'
 import { DEMO_CONTACTS } from '@/lib/demo-data'
 import AddLeadModal from '@/components/leads/AddLeadModal'
+import BookAppointmentModal from '@/components/appointments/BookAppointmentModal'
 
 const STATUS_STYLES: Record<LeadStatus, string> = {
   new:         'bg-blue-50 text-blue-700',
@@ -41,11 +43,13 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 
 export default function ContactsPage() {
+  const router = useRouter()
   const [contacts, setContacts] = useState<Lead[]>(DEMO_CONTACTS)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [bookingLead, setBookingLead] = useState<Lead | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -156,10 +160,18 @@ export default function ContactsPage() {
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex gap-2">
-                      <button title="פתח שיחה" className="text-slate-400 hover:text-indigo-600 transition-colors">
+                      <button
+                        title="פתח שיחה"
+                        onClick={() => router.push(`/inbox?lead_id=${contact.id}`)}
+                        className="text-slate-400 hover:text-indigo-600 transition-colors"
+                      >
                         <MessageSquare size={15} />
                       </button>
-                      <button title="קבע פגישה" className="text-slate-400 hover:text-purple-600 transition-colors">
+                      <button
+                        title="קבע פגישה"
+                        onClick={() => setBookingLead(contact)}
+                        className="text-slate-400 hover:text-purple-600 transition-colors"
+                      >
                         <Calendar size={15} />
                       </button>
                     </div>
@@ -175,6 +187,15 @@ export default function ContactsPage() {
         <AddLeadModal
           onClose={() => setShowAdd(false)}
           onCreated={() => { setShowAdd(false); load() }}
+        />
+      )}
+
+      {bookingLead && (
+        <BookAppointmentModal
+          leadId={bookingLead.id}
+          leadName={bookingLead.name}
+          onClose={() => setBookingLead(null)}
+          onBooked={() => setBookingLead(null)}
         />
       )}
     </div>

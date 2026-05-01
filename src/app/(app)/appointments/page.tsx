@@ -21,33 +21,75 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 
 type ApptWithLead = Appointment & { lead: { name: string; phone: string } | null }
 
-function dateLabel(date: Date) {
-  if (isToday(date)) return 'היום'
-  if (isTomorrow(date)) return 'מחר'
-  return format(date, 'EEEE, d בMMMM', { locale: he })
-}
+function todayISO() { return new Date().toISOString().slice(0, 10) }
 
 export default function AppointmentsPage() {
   const [appts, setAppts] = useState<ApptWithLead[]>(DEMO_APPOINTMENTS as ApptWithLead[])
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<'upcoming' | 'all'>('upcoming')
+  const [rescheduling, setRescheduling] = useState<ApptWithLead | null>(null)
+  const [reschedDate, setReschedDate] = useState('')
+  const [reschedTime, setReschedTime] = useState('10:00')
+  const [reschedLoading, setReschedLoading] = useState(false)
+  const [sendingWa, setSendingWa] = useState<string | null>(null)
 
-  useEffect(() => {
+  function load() {
     setLoading(true)
     fetch('/api/appointments')
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (Array.isArray(data) && data.length > 0) setAppts(data) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
 
   async function updateStatus(id: string, status: string) {
     try {
       if (status === 'cancelled') {
         await fetch(`/api/appointments/${id}/cancel`, { method: 'POST' })
+      } else {
+        await fetch(`/api/appointments/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        })
       }
       setAppts(prev => prev.map(a => a.id === id ? { ...a, status: status as Appointment['status'] } : a))
     } catch {}
+  }
+
+  async function doReschedule() {
+    if (!rescheduling || !reschedDate) return
+    setReschedLoading(true)
+    try {
+      const date = new Date(`${reschedDate}T${reschedTime}`).toISOString()
+      const res = await fetch(`/api/appointments/${rescheduling.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, status: 'confirmed' }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setAppts(prev => prev.map(a => a.id === rescheduling.id ? { ...a, ...updated } : a))
+        setRescheduling(null)
+      }
+    } finally { setReschedLoading(false) }
+  }
+
+  async function sendReminder(appt: ApptWithLead) {
+    if (!appt.lead_id) return
+    setSendingWa(appt.id)
+    try {
+      const dateStr = format(new Date(appt.date), 'dd/MM/yyyy HH:mm')
+      const msg = `תזכורת: יש לך פגישה${appt.title ? ` – ${appt.title}` : ''} ב-${dateStr}. נתראה! 🗓️`
+      await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_id: appt.lead_id, body: msg }),
+      })
+      await updateStatus(appt.id, 'reminder_sent')
+    } finally { setSendingWa(null) }
   }
 
   const today = appts.filter(a => isToday(new Date(a.date)) && a.status !== 'cancelled')
@@ -63,10 +105,10 @@ export default function AppointmentsPage() {
           <p className="text-sm text-slate-500">{today.length} היום · {upcoming.length} קרובות</p>
         </div>
         <div className="flex gap-2">
-          {['upcoming', 'all'].map(v => (
+          {(['upcoming', 'all'] as const).map(v => (
             <button
               key={v}
-              onClick={() => setView(v as typeof view)}
+              onClick={() => setView(v)}
               className={clsx(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                 view === v ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -82,24 +124,42 @@ export default function AppointmentsPage() {
         <div className="text-center text-slate-400 py-10 text-sm">טוען...</div>
       ) : (
         <div className="space-y-6">
-          {/* Today */}
           {today.length > 0 && (
             <Section title="היום" count={today.length} accent>
-              {today.map(appt => <ApptCard key={appt.id} appt={appt} onStatusChange={updateStatus} />)}
+              {today.map(appt => (
+                <ApptCard key={appt.id} appt={appt}
+                  onStatusChange={updateStatus}
+                  onReschedule={() => { setRescheduling(appt); setReschedDate(''); setReschedTime('10:00') }}
+                  onSendWa={() => sendReminder(appt)}
+                  sendingWa={sendingWa === appt.id}
+                />
+              ))}
             </Section>
           )}
 
-          {/* Upcoming */}
           {upcoming.length > 0 && (
             <Section title="קרובות" count={upcoming.length}>
-              {upcoming.map(appt => <ApptCard key={appt.id} appt={appt} onStatusChange={updateStatus} />)}
+              {upcoming.map(appt => (
+                <ApptCard key={appt.id} appt={appt}
+                  onStatusChange={updateStatus}
+                  onReschedule={() => { setRescheduling(appt); setReschedDate(''); setReschedTime('10:00') }}
+                  onSendWa={() => sendReminder(appt)}
+                  sendingWa={sendingWa === appt.id}
+                />
+              ))}
             </Section>
           )}
 
-          {/* Past */}
           {(view === 'all' || today.length + upcoming.length === 0) && past.length > 0 && (
             <Section title="קודמות / בוטלו" count={past.length}>
-              {past.map(appt => <ApptCard key={appt.id} appt={appt} onStatusChange={updateStatus} />)}
+              {past.map(appt => (
+                <ApptCard key={appt.id} appt={appt}
+                  onStatusChange={updateStatus}
+                  onReschedule={() => { setRescheduling(appt); setReschedDate(''); setReschedTime('10:00') }}
+                  onSendWa={() => sendReminder(appt)}
+                  sendingWa={sendingWa === appt.id}
+                />
+              ))}
             </Section>
           )}
 
@@ -109,6 +169,40 @@ export default function AppointmentsPage() {
               <p className="text-slate-500">אין פגישות</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Reschedule modal */}
+      {rescheduling && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setRescheduling(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-slate-900 mb-1">קביעה מחדש</h2>
+            <p className="text-xs text-slate-500 mb-4">{rescheduling.lead?.name}</p>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">תאריך *</label>
+                <input type="date" value={reschedDate} min={todayISO()}
+                  onChange={e => setReschedDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">שעה *</label>
+                <input type="time" value={reschedTime}
+                  onChange={e => setReschedTime(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setRescheduling(null)}
+                className="flex-1 border border-slate-200 text-slate-600 py-2 rounded-lg text-sm hover:bg-slate-50">
+                ביטול
+              </button>
+              <button onClick={doReschedule} disabled={!reschedDate || reschedLoading}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors">
+                {reschedLoading ? 'שומר...' : 'אשר מועד חדש'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -131,21 +225,25 @@ function Section({ title, count, accent, children }: {
   )
 }
 
-function ApptCard({ appt, onStatusChange }: { appt: ApptWithLead; onStatusChange: (id: string, s: string) => void }) {
+function ApptCard({ appt, onStatusChange, onReschedule, onSendWa, sendingWa }: {
+  appt: ApptWithLead
+  onStatusChange: (id: string, s: string) => void
+  onReschedule: () => void
+  onSendWa: () => void
+  sendingWa: boolean
+}) {
   const d = new Date(appt.date)
   const cfg = STATUS_CONFIG[appt.status] ?? STATUS_CONFIG.scheduled
   const isActive = !['cancelled', 'arrived', 'no_show'].includes(appt.status)
 
   return (
     <div className="flex items-center gap-4 px-5 py-4">
-      {/* Date block */}
       <div className="text-center min-w-[52px] shrink-0">
         <div className={clsx('text-xl font-bold', isToday(d) ? 'text-indigo-700' : 'text-slate-800')}>{format(d, 'd')}</div>
         <div className="text-xs text-slate-400 font-medium">{format(d, 'MMM', { locale: he })}</div>
       </div>
       <div className="w-px h-10 bg-slate-200 shrink-0" />
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-slate-800">{appt.lead?.name ?? '—'}</p>
@@ -155,46 +253,31 @@ function ApptCard({ appt, onStatusChange }: { appt: ApptWithLead; onStatusChange
           <span className="flex items-center gap-1"><Clock size={10} />{format(d, 'HH:mm')}</span>
           {appt.title && <span>· {appt.title}</span>}
           {appt.lead?.phone && (
-            <span className="flex items-center gap-1" dir="ltr">
-              <Phone size={10} />{appt.lead.phone}
-            </span>
+            <span className="flex items-center gap-1" dir="ltr"><Phone size={10} />{appt.lead.phone}</span>
           )}
         </div>
       </div>
 
-      {/* Status */}
       <span className={clsx('text-xs px-2.5 py-1 rounded-full border font-medium shrink-0', cfg.color)}>
         {cfg.label}
       </span>
 
-      {/* Actions */}
       {isActive && (
         <div className="flex gap-1 shrink-0">
-          <button
-            onClick={() => onStatusChange(appt.id, 'arrived')}
-            title="הגיע"
-            className="w-7 h-7 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 flex items-center justify-center transition-colors"
-          >
+          <button onClick={() => onStatusChange(appt.id, 'arrived')} title="הגיע"
+            className="w-7 h-7 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 flex items-center justify-center transition-colors">
             <Check size={13} />
           </button>
-          <button
-            onClick={() => onStatusChange(appt.id, 'no_show')}
-            title="לא הגיע"
-            className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors"
-          >
+          <button onClick={() => onStatusChange(appt.id, 'no_show')} title="לא הגיע"
+            className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition-colors">
             <X size={13} />
           </button>
-          <button
-            onClick={() => onStatusChange(appt.id, 'rescheduled')}
-            title="קבע מחדש"
-            className="w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors"
-          >
+          <button onClick={onReschedule} title="קבע מחדש"
+            className="w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors">
             <RotateCcw size={13} />
           </button>
-          <button
-            title="שלח WhatsApp"
-            className="w-7 h-7 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-colors"
-          >
+          <button onClick={onSendWa} disabled={sendingWa} title="שלח תזכורת WhatsApp"
+            className="w-7 h-7 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-colors disabled:opacity-40">
             <Send size={13} />
           </button>
         </div>

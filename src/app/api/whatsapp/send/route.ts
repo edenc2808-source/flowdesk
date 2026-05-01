@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { sendWhatsAppMessage } from '@/lib/twilio'
-import { getDefaultWorkspaceId } from '@/lib/workspace'
+import { getAuthContext } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
+  const auth = await getAuthContext()
+  if (!auth) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
   let body: { to?: string; body?: string; lead_id?: string; conversation_id?: string }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'invalid JSON' }, { status: 400 }) }
@@ -16,25 +19,27 @@ export async function POST(req: NextRequest) {
   let phone = to
   let leadId = lead_id
   let convId = conversation_id
-  let wsId: string | null = null
 
   if (lead_id) {
-    const { data: lead } = await db.from('leads').select('phone, workspace_id').eq('id', lead_id).single()
+    // Verify lead belongs to authenticated workspace
+    const { data: lead } = await db
+      .from('leads')
+      .select('phone, workspace_id')
+      .eq('id', lead_id)
+      .eq('workspace_id', auth.workspaceId)
+      .single()
     if (!lead) return NextResponse.json({ error: 'lead not found' }, { status: 404 })
     phone = lead.phone
-    wsId = lead.workspace_id
     leadId = lead_id
   }
 
-  if (!wsId) wsId = await getDefaultWorkspaceId()
-  if (!wsId) return NextResponse.json({ error: 'no workspace' }, { status: 503 })
   if (!phone) return NextResponse.json({ error: 'no phone number' }, { status: 400 })
 
-  // Ensure conversation exists
+  // Ensure conversation exists (scoped to authenticated workspace)
   if (leadId && !convId) {
     const { data: conv } = await db
       .from('conversations')
-      .upsert({ lead_id: leadId, workspace_id: wsId }, { onConflict: 'lead_id', ignoreDuplicates: false })
+      .upsert({ lead_id: leadId, workspace_id: auth.workspaceId }, { onConflict: 'lead_id', ignoreDuplicates: false })
       .select('id')
       .single()
     convId = conv?.id

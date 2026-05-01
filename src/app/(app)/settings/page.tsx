@@ -32,7 +32,7 @@ export default function SettingsPage() {
   }
 
   function copyWebhook() {
-    const url = `${window.location.origin}/api/webhook/twilio`
+    const url = `${window.location.origin}/api/whatsapp/webhook`
     navigator.clipboard.writeText(url).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -88,7 +88,7 @@ export default function SettingsPage() {
               <label className="block text-xs font-medium text-slate-700 mb-1">כתובת Webhook</label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 font-mono truncate" dir="ltr">
-                  {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/twilio` : '/api/webhook/twilio'}
+                  {typeof window !== 'undefined' ? `${window.location.origin}/api/whatsapp/webhook` : '/api/whatsapp/webhook'}
                 </code>
                 <button type="button" onClick={copyWebhook} className="shrink-0 p-2 text-slate-400 hover:text-indigo-600 transition-colors">
                   {copied ? <CheckCircle size={16} className="text-green-500" /> : <Copy size={16} />}

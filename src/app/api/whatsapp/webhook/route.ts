@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { normalizePhone, validateTwilioSignature } from '@/lib/twilio'
 import { getDefaultWorkspaceId } from '@/lib/workspace'
 import { buildSuggestion } from '@/app/api/ai/suggest/route'
+import { onInboundMessage } from '@/lib/automation'
 
 const TWIML_OK = () => new NextResponse('<Response></Response>', {
   status: 200,
@@ -13,10 +14,10 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData()
   const params = Object.fromEntries(formData.entries()) as Record<string, string>
 
-  const sig = req.headers.get('x-twilio-signature')
-  if (sig) {
-    if (!validateTwilioSignature(sig, req.url, params)) {
-      console.warn('[Webhook] Invalid Twilio signature — rejected')
+  if (process.env.NODE_ENV === 'production') {
+    const sig = req.headers.get('x-twilio-signature') ?? ''
+    if (!sig || !validateTwilioSignature(sig, req.url, params)) {
+      console.warn('[Webhook] Invalid or missing Twilio signature — rejected')
       return new NextResponse('Forbidden', { status: 403 })
     }
   }
@@ -98,9 +99,10 @@ async function handleInbound(body: Record<string, string>): Promise<NextResponse
 
   if (msgErr) console.error('[Webhook] Message insert:', msgErr.message)
 
-  await db.from('leads').update({ status: 'responded' }).eq('id', lead.id)
-
   console.info(`[Webhook] Inbound from=${phone} conv=${conv.id} len=${content.length}`)
+
+  // Pause pending automations + update lead status
+  onInboundMessage(lead.id).catch(err => console.error('[Webhook] onInboundMessage error:', err))
 
   // Fire-and-forget AI suggestion generation (non-blocking)
   if (savedMsg?.id) {
